@@ -28,12 +28,12 @@ class Runner {
 
 		// Run all future commands from the context of the target directory.
 		chdir( $target_dir );
-		Logger::info( 'Changed into directory: ' . getcwd() );
+		Logger::warning( 'Changed into directory: ' . getcwd() );
 
 		// Check if there are any security advisories for any of the
 		// versions of any of our dependencies in use right now.
 		$security_message = $this->checkSensiolabsSecurity( 'composer.lock', $is_vulnerable );
-		Logger::info( $security_message );
+		Logger::warning( $security_message );
 
 		// Exit early if user requested security updates only, and no dependencies
 		// are vulnerable.
@@ -44,14 +44,16 @@ class Runner {
 
 		// Determine whether there is an existing open PR with Composer updates
 		$existing_PR_branch = $this->checkExistingPRBranch( 'branch' );
-
+		echo "existing_PR_branch = " . $existing_PR_branch . "\n";
+		Logger::warning( "existing_PR_branch = " . $existing_PR_branch);
+        Logger::warning( sprintf( 'start %s #%d', '=', $existing_PR_branch ) );
 		if ( $existing_PR_branch ) {
 			exec( 'git rev-parse --abbrev-ref HEAD', $initial_branch, $return_code );
 			if ( 0 !== $return_code ) {
 				Logger::error( 'Failed to fetch initial branch.' );
 			}
 			$initial_branch = $initial_branch[0];
-			Logger::info( "Inspecting existing branch: $existing_PR_branch" );
+			Logger::warning( "Inspecting existing branch: $existing_PR_branch" );
 			passthru( 'git fetch' );
 			passthru( 'git checkout ' . $existing_PR_branch );
 			// Check to see if there are any outdated dependencies.
@@ -65,14 +67,14 @@ class Runner {
 			// Check out the initial branch locally and delete the local PR branch.
 			passthru( 'git checkout -f ' . $initial_branch );
 			$cmd = 'git branch -D ' . escapeshellarg( $existing_PR_branch );
-			Logger::info( $cmd );
+			Logger::warning( $cmd );
 			passthru( $cmd, $return_code );
 			if ( 0 !== $return_code ) {
 				Logger::error( 'Failed to delete local branch.' );
 			}
 			// Fall through to create the new branch.
 		}
-
+        Logger::warning( "Run composer install" );
 		// Perform an initial install to sanity check the package.
 		$this->runComposerInstall();
 
@@ -94,13 +96,13 @@ class Runner {
 		if ( 0 !== $return_code ) {
 			Logger::error( 'Failed to set git config email.' );
 		}
-		Logger::info( 'Set git config name and email.' );
+		Logger::warning( 'Set git config name and email.' );
 
 		$date = date( 'Y-m-d-H-i' );
 		// Checkout a dated branch to make the commit
 		$branch_name = 'clu-' . $date;
 		$cmd = 'git checkout -b ' . escapeshellarg( $branch_name );
-		Logger::info( $cmd );
+		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
 			Logger::error( 'Failed to check out branch.' );
@@ -115,21 +117,21 @@ Update Composer dependencies ({$date})
 EOT;
 
 		$cmd = 'git commit -am ' . escapeshellarg( $message );
-		Logger::info( $cmd );
+		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
 			Logger::error( 'Failed to commit changes.' );
 		}
 
 		$cmd = 'git push origin ' . escapeshellarg( $branch_name );
-		Logger::info( $cmd );
+		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
 			Logger::error( 'Failed to push changes to origin.' );
 		}
 
 		$cmd = sprintf($this->provider->pr_create, escapeshellarg( $message ));
-		Logger::info( $cmd );
+		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
 			Logger::error( sprintf( 'Failed to create a %s.', $this->getRequestType() ) );
@@ -145,12 +147,20 @@ EOT;
 	 * @return mixed
 	 */
 	private function checkExistingPRBranch( $type ) {
+		Logger::warning( sprintf( 'checkExistingPRBranch %s #%d', 'type', $type ) );
+		echo "checkExistingPRBranch type = " . $type ."\n";
 		$cmd = $this->provider->pr_list;
+		Logger::warning( sprintf( 'checkExistingPRBranch %s #%d', 'cmd', $cmd ) );
+		echo "checkExistingPRBranch cmd = " . $cmd ."\n";
 		exec($cmd, $output_lines, $return_code);
+		Logger::warning( sprintf( 'checkExistingPRBranch %s #%d', 'return_code', $return_code ) );
+		echo "checkExistingPRBranch return_code = " . $return_code ."\n";
 		if ( 0 !== $return_code ) {
 			Logger::error( sprintf( 'Unable to check for existing %ss', $this->getRequestType() ) );
 		}
 		foreach ($output_lines as $line) {
+			Logger::warning( sprintf( 'checkExistingPRBranch %s #%d', 'line', $line ) );
+			echo "checkExistingPRBranch line = " . $line ."\n";
 			if (preg_match($this->provider->title_pattern, $line, $matches)) {
 				if ( 'number' === $type ) {
 					return $matches[1];
@@ -170,7 +180,12 @@ EOT;
 	 * @return boolean
 	 */
 	private function closeExistingPRBranch( $branch_name ) {
+
+		Logger::warning( sprintf( 'closeExistingPRBranch %s #%d', '=', $branch_name ) );
+		echo "closeExistingPRBranch branch_name = " . $branch_name ."\n";
 		$number = $this->checkExistingPRBranch( 'number' );
+		Logger::warning( sprintf( 'closeExistingPRBranch %s #%d', '=', $number ) );
+		echo "closeExistingPRBranch number = " . $number ."\n";
 		if ( ! $number ) {
 			Logger::error( sprintf( 'Unable to find existing %s number', $this->getRequestType() ) );
 		}
@@ -179,9 +194,9 @@ EOT;
 		if ( 0 !== $return_code ) {
 			Logger::error( sprintf( 'Unable to close existing %s #%d: %s', $this->getRequestType(), $number, implode( PHP_EOL, $output_lines ) ) );
 		}
-		Logger::info( sprintf( 'Closed existing %s #%d', $this->getRequestType(), $number ) );
+		Logger::warning( sprintf( 'Closed existing %s #%d', $this->getRequestType(), $number ) );
 		$cmd = 'git push origin --delete ' . escapeshellarg( $branch_name );
-		Logger::info( $cmd );
+		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
 			Logger::error( 'Failed to delete origin branch.' );
@@ -228,10 +243,10 @@ EOT;
 			Logger::error( 'Failed to detect changes to composer.lock' );
 		}
 		if ( empty( $output ) ) {
-			Logger::success( 'No changes detected to composer.lock' );
+			Logger::warning( 'No changes detected to composer.lock' );
 			return false;
 		}
-		Logger::info( 'Detected changes to composer.lock' );
+		Logger::warning( 'Detected changes to composer.lock' );
 		return true;
 	}
 
@@ -241,7 +256,7 @@ EOT;
 	private function runComposerInstall() {
 		$args = getenv( 'CLU_COMPOSER_INSTALL_ARGS' ) ? : '--no-dev --no-interaction';
 		$cmd  = 'composer install ' . $args;
-		Logger::info( $cmd );
+		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
 			Logger::error( 'Composer failed to install dependencies.' );
@@ -254,13 +269,13 @@ EOT;
 	private function runComposerUpdate() {
 		$args = getenv( 'CLU_COMPOSER_UPDATE_ARGS' ) ? : '--no-progress --no-dev --no-interaction';
 		$cmd  = 'composer update ' . $args . ' 2>&1 | tee vendor/update.log';
-		Logger::info( $cmd );
+		Logger::warning( $cmd );
 		exec( $cmd, $output, $return_code );
 		if ( 0 !== $return_code ) {
 			Logger::error( 'Composer failed to update dependencies.' );
 		}
 		$output = implode( PHP_EOL, $output );
-		Logger::info( $output );
+		Logger::warning( $output );
 		return $output;
 	}
 
