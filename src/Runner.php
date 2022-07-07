@@ -2,6 +2,10 @@
 
 namespace CLU;
 
+use JiraRestApi\JiraException;
+use JiraRestApi\Issue\IssueField;
+use JiraRestApi\Issue\IssueService;
+
 class Runner {
 
 	/**
@@ -108,7 +112,26 @@ class Runner {
 			Logger::error( 'Failed to check out branch.' );
 		}
 
-		$message = <<<EOT
+        $message = '';
+
+        $clu_jira_projectid = getenv( 'CLU_JIRA_PROJECTID');
+        $clu_jira_assigneeid = getenv( 'CLU_JIRA_ASSIGNEEID');
+
+        if($clu_jira_projectid) {
+        	// Check if this is an existing ticket number.
+        	if (preg_match('~-[0-9]+~', $clu_jira_projectid)) {
+        	    $message .= 'Issue #' . $clu_jira_projectid . "\n";
+            }
+            else {
+        	    $ret = $this->jiraIssueCreate($clu_jira_projectid, $opts = [
+                    'assignee' => $clu_jira_assigneeid,
+                    'description' => "Automated composer dependency updates for: " . $this->repo_url . "\n\n" . $update_message . $security_message,
+                    'summary' => "Update Composer dependencies " . $date]);
+        	    $message .= 'Issue #' . $ret->key . "\n\n";
+            }
+        }
+
+		$message .= <<<EOT
 Update Composer dependencies ({$date})
 
 ```
@@ -131,6 +154,11 @@ EOT;
 		}
 
 		$cmd = sprintf($this->provider->pr_create, escapeshellarg( $message ));
+                $clu_pr_create_options = getenv( 'CLU_PR_CREATE_OPTIONS');
+		Logger::warning( "CLU_PR_CREATE_OPTIONS = " . $clu_pr_create_options);
+		if ( $clu_pr_create_options ) {
+	       		$cmd =  $cmd . ' ' . $clu_pr_create_options;
+		}
 		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
@@ -255,7 +283,7 @@ EOT;
 	 */
 	private function runComposerInstall() {
 		$args = getenv( 'CLU_COMPOSER_INSTALL_ARGS' ) ? : '--no-dev --no-interaction';
-		$cmd  = 'composer install ' . $args;
+		$cmd  = 'rm -rf ./web/modules/contrib/security_review && rm -rf ./web/modules/contrib/password_policy && composer install ' . $args;
 		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
@@ -268,15 +296,58 @@ EOT;
 	 */
 	private function runComposerUpdate() {
 		$args = getenv( 'CLU_COMPOSER_UPDATE_ARGS' ) ? : '--no-progress --no-dev --no-interaction';
-		$cmd  = 'composer update ' . $args . ' 2>&1 | tee vendor/update.log';
+		$cmd  = 'rm -rf ./web/modules/contrib/security_review && rm -rf ./web/modules/contrib/password_policy && composer update ' . $args . ' 2>&1';
 		Logger::warning( $cmd );
 		exec( $cmd, $output, $return_code );
+                $output = implode( PHP_EOL, $output );
+                file_put_contents('vendor/update.log', $output);
+                echo $output;
 		if ( 0 !== $return_code ) {
+			$cmd = 'git reset HEAD --hard';
+			Logger::warning( $cmd );
+			exec( $cmd, $output, $return_code );
+			$cmd = 'git clean -fd';
+			Logger::warning( $cmd );
+			exec( $cmd, $output, $return_code );
 			Logger::error( 'Composer failed to update dependencies.' );
 		}
-		$output = implode( PHP_EOL, $output );
 		Logger::warning( $output );
 		return $output;
 	}
+
+        /**
+     * JIRA Create Issue
+     *
+     * @param string $project Project Name
+     * @param array $opts
+     * @option $assignee Assignee ID
+     * @option $description Ussue describtion
+     */
+    private function jiraIssueCreate($project, $opts = [
+        'assignee' => '',
+        'description' => 'Automated composer dependency updates.',
+        'summary' => 'Composer dependency update'])
+    {
+
+        try {
+            $issueField = new IssueField();
+
+            $issueField->setProjectKey($project)
+                        ->setSummary($opts['summary'])
+                        ->setAssigneeAccountId($opts['assignee'])
+                        ->setPriorityName("Medium")
+                        ->setIssueType("Task")
+                        ->setDescription($opts['description'])
+                    ;
+
+            $issueService = new IssueService();
+
+            return $issueService->create($issueField);
+
+            //If success, Returns a link to the created issue.
+        } catch (JiraRestApi\JiraException $e) {
+            print("Error Occured! " . $e->getMessage());
+        }
+    }
 
 }

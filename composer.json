@@ -8,7 +8,9 @@
             "email": "daniel@handbuilt.co"
         }
     ],
-    "require": {},
+    "require": {
+        "lesstif/php-jira-rest-client": "^1.41"
+    },
     "require-dev": {
         "satooshi/php-coveralls": "~1",
         "phpunit/php-code-coverage": "~2|~4",
