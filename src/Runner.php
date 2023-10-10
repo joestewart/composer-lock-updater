@@ -15,6 +15,8 @@ class Runner {
 	 */
 	private $repo_url;
 
+	private $target_dir;
+
 	/**
 	 * Instantiate the runner.
 	 *
@@ -27,6 +29,8 @@ class Runner {
 	}
 
 	public function start( $target_dir, $opts ) {
+
+		$this->target_dir = $target_dir;
 		// Clone the repository to a working directory.
 		$shorthash = substr( md5( mt_rand() . time() ), 0, 7 );
 
@@ -36,7 +40,7 @@ class Runner {
 
 		// Check if there are any security advisories for any of the
 		// versions of any of our dependencies in use right now.
-		$security_message = $this->checkSensiolabsSecurity( 'composer.lock', $is_vulnerable );
+		$security_message = $this->checkComposerAudit($is_vulnerable );
 		Logger::warning( $security_message );
 
 		// Exit early if user requested security updates only, and no dependencies
@@ -251,6 +255,17 @@ EOT;
 	}
 
 	/**
+     * Check Composer Audit.
+     *
+     * $security_status will be 0 if the code is believed to be good, and
+     * will be non-zero if vulnerabilities were detected.
+     */
+    protected function checkComposerAudit(&$is_vulnerable) {
+        exec( 'composer audit --locked', $output, $is_vulnerable );
+        return "\n\n" . implode("\n", $output);
+    }
+
+	/**
 	 * Returns 'pull request' or 'merge request', depending on provider.
 	 *
 	 * @return string
@@ -283,7 +298,8 @@ EOT;
 	 */
 	private function runComposerInstall() {
 		$args = getenv( 'CLU_COMPOSER_INSTALL_ARGS' ) ? : '--no-dev --no-interaction';
-		$cmd  = 'rm -rf ./web/modules/contrib/security_review && rm -rf ./web/modules/contrib/password_policy && composer install ' . $args;
+		$args = $args . " --working-dir=build/" . basename($this->target_dir);
+        $cmd  = 'cd .. && ddev composer install ' . $args;
 		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
@@ -296,7 +312,8 @@ EOT;
 	 */
 	private function runComposerUpdate() {
 		$args = getenv( 'CLU_COMPOSER_UPDATE_ARGS' ) ? : '--no-progress --no-dev --no-interaction';
-		$cmd  = 'rm -rf ./web/modules/contrib/security_review && rm -rf ./web/modules/contrib/password_policy && composer update ' . $args . ' 2>&1';
+		$args = $args . " --working-dir=build/" . basename($this->target_dir);
+        $cmd  = 'cd .. && ddev composer update ' . $args . ' 2>&1';
 		Logger::warning( $cmd );
 		exec( $cmd, $output, $return_code );
                 $output = implode( PHP_EOL, $output );
