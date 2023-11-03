@@ -15,7 +15,7 @@ class Runner {
 	 */
 	private $repo_url;
 
-	private $target_dir;
+        private $target_dir;
 
 	/**
 	 * Instantiate the runner.
@@ -29,7 +29,7 @@ class Runner {
 	}
 
 	public function start( $target_dir, $opts ) {
-
+		
 		$this->target_dir = $target_dir;
 		// Clone the repository to a working directory.
 		$shorthash = substr( md5( mt_rand() . time() ), 0, 7 );
@@ -40,6 +40,7 @@ class Runner {
 
 		// Check if there are any security advisories for any of the
 		// versions of any of our dependencies in use right now.
+		# $security_message = $this->checkSensiolabsSecurity( 'composer.lock', $is_vulnerable );
 		$security_message = $this->checkComposerAudit($is_vulnerable );
 		Logger::warning( $security_message );
 
@@ -254,16 +255,16 @@ EOT;
 		return "\n\n" . implode("\n", $output);
 	}
 
-	/**
-     * Check Composer Audit.
-     *
-     * $security_status will be 0 if the code is believed to be good, and
-     * will be non-zero if vulnerabilities were detected.
-     */
-    protected function checkComposerAudit(&$is_vulnerable) {
-        exec( 'composer audit --locked', $output, $is_vulnerable );
-        return "\n\n" . implode("\n", $output);
-    }
+        /**
+	 * Check Composer Audit.
+	 *
+	 * $security_status will be 0 if the code is believed to be good, and
+	 * will be non-zero if vulnerabilities were detected.
+	 */
+	protected function checkComposerAudit(&$is_vulnerable) {
+		exec( 'composer audit --locked', $output, $is_vulnerable );
+		return "\n\n" . implode("\n", $output);
+	}
 
 	/**
 	 * Returns 'pull request' or 'merge request', depending on provider.
@@ -299,7 +300,7 @@ EOT;
 	private function runComposerInstall() {
 		$args = getenv( 'CLU_COMPOSER_INSTALL_ARGS' ) ? : '--no-dev --no-interaction';
 		$args = $args . " --working-dir=build/" . basename($this->target_dir);
-        $cmd  = 'cd .. && ddev composer install ' . $args;
+		$cmd  = 'cd ../.. && ddev composer install ' . $args;
 		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
@@ -313,18 +314,29 @@ EOT;
 	private function runComposerUpdate() {
 		$args = getenv( 'CLU_COMPOSER_UPDATE_ARGS' ) ? : '--no-progress --no-dev --no-interaction';
 		$args = $args . " --working-dir=build/" . basename($this->target_dir);
-        $cmd  = 'cd .. && ddev composer update ' . $args . ' 2>&1';
+		$cmd  = 'cd ../.. && ddev composer update ' . $args . ' 2>&1';
 		Logger::warning( $cmd );
+		$output = null;
 		exec( $cmd, $output, $return_code );
-                $output = implode( PHP_EOL, $output );
+		$output = implode( PHP_EOL, $output );
                 file_put_contents('vendor/update.log', $output);
                 echo $output;
 		if ( 0 !== $return_code ) {
+			$clu_jira_projectid = getenv( 'CLU_JIRA_PROJECTID');
+			$clu_jira_assigneeid = getenv( 'CLU_JIRA_ASSIGNEEID');
+                        $ret = $this->jiraIssueCreate($clu_jira_projectid, $opts = [
+                                 'assignee' => $clu_jira_assigneeid,
+                                 # 'description' => "Automated composer dependency updates failed. Please investigate.\n\n" . $output,
+				 'description' => "Automated composer dependency updates failed for: " . $this->repo_url . "\nPlease investigate.\n\n" . $output,
+				 'summary' => "Composer update failed " . date( 'Y-m-d-H-i' )]);
+			Logger::warning("Issue #: " . $ret->key);
 			$cmd = 'git reset HEAD --hard';
 			Logger::warning( $cmd );
+			$output = null;
 			exec( $cmd, $output, $return_code );
 			$cmd = 'git clean -fd';
 			Logger::warning( $cmd );
+			$output = null;
 			exec( $cmd, $output, $return_code );
 			Logger::error( 'Composer failed to update dependencies.' );
 		}
@@ -354,7 +366,7 @@ EOT;
                         ->setAssigneeAccountId($opts['assignee'])
                         ->setPriorityName("Medium")
                         ->setIssueType("Task")
-                        ->setDescription($opts['description'])
+                        ->setDescription(mb_strimwidth($opts['description'], 0, 32000, "..."))
                     ;
 
             $issueService = new IssueService();
