@@ -29,7 +29,7 @@ class Runner {
 	}
 
 	public function start( $target_dir, $opts ) {
-		
+
 		$this->target_dir = $target_dir;
 		// Clone the repository to a working directory.
 		$shorthash = substr( md5( mt_rand() . time() ), 0, 7 );
@@ -300,7 +300,7 @@ EOT;
 	private function runComposerInstall() {
 		$args = getenv( 'CLU_COMPOSER_INSTALL_ARGS' ) ? : '--no-dev --no-interaction';
 		$args = $args . " --working-dir=build/" . basename($this->target_dir);
-		$cmd  = 'cd ../.. && ddev composer install ' . $args;
+		$cmd  = 'cd ../.. && composer install ' . $args;
 		Logger::warning( $cmd );
 		passthru( $cmd, $return_code );
 		if ( 0 !== $return_code ) {
@@ -314,7 +314,7 @@ EOT;
 	private function runComposerUpdate() {
 		$args = getenv( 'CLU_COMPOSER_UPDATE_ARGS' ) ? : '--no-progress --no-dev --no-interaction';
 		$args = $args . " --working-dir=build/" . basename($this->target_dir);
-		$cmd  = 'cd ../.. && ddev composer update ' . $args . ' 2>&1';
+		$cmd  = 'cd ../.. && composer update ' . $args . ' 2>&1';
 		Logger::warning( $cmd );
 		$output = null;
 		exec( $cmd, $output, $return_code );
